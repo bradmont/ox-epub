@@ -1,4 +1,4 @@
-;;; ox-epub.el --- Export org mode projects to EPUB -*- lexical-binding: t; -*-
+;;;wit-hh ox-epub.el --- Export org mode projects to EPUB -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2017-2018 - Mark Meyer
 
@@ -8,7 +8,8 @@
 ;; URL: http://github.com/ofosos/org-epub
 ;; Keywords: hypermedia
 
-;; Version: 0.1.0
+;; Package-Version: 20181101.1854
+;; Package-Revision: a66eeb00daa0
 
 ;; Package-Requires: ((emacs "24.3") (org "9"))
 
@@ -368,17 +369,15 @@ holding export options."
 
 ;; see ox-odt
 
-(defmacro org-epub--export-wrapper (outfile &rest body)
-  "Export an Epub with BODY generating the main html file and OUTFILE as target file."
-  `(let* ((outfile ,outfile)
-	      (org-epub-manifest nil)
-	      (org-epub-metadata nil)
+(defun org-epub--export-wrapper (outfile chapters)
+  "Export an Epub with CHAPTERS (list of (title . content)) generating the main html file and OUTFILE as target file."
+  (let* (
+	      ;(org-epub-manifest nil)
+	      ;(org-epub-metadata nil)
 	      (org-epub-style-counter 0)
 	      (out-file-type (file-name-extension outfile))
-	      (org-epub-zip-dir (file-name-as-directory
-				 (make-temp-file (format "%s-" out-file-type) t)))
-	      (body ,@body))
-     (condition-case err
+	      )
+     ;(condition-case err
 	 (progn
 	   (when (plist-get org-epub-metadata :html-head-include-default-style)
 	     (with-current-buffer (find-file (concat org-epub-zip-dir "style.css"))
@@ -415,12 +414,15 @@ holding export options."
 	     (insert (org-epub-template-mimetype))
 	     (save-buffer 0)
 	     (kill-buffer))
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "body.html"))
-	     (erase-buffer)
-	     (insert body)
-	     (save-buffer 0)
-	     (kill-buffer)
-	     (nconc org-epub-manifest (list (org-epub-manifest-entry "body-html" "body.html" 'html "application/xhtml+xml"))))
+           (nconc org-epub-manifest
+             (mapcar (lambda (ch)
+               (org-epub-manifest-entry
+                 (car ch)
+                 (file-name-nondirectory (cdr ch))
+                 'html
+                 "application/xhtml+xml"))
+               chapters))
+
 	   (with-current-buffer (find-file (concat org-epub-zip-dir "toc.ncx"))
 	     (erase-buffer)
 	     (insert
@@ -428,6 +430,7 @@ holding export options."
 	       (plist-get org-epub-metadata :epub-uid)
 	       (plist-get org-epub-metadata :epub-toc-depth)
 	       (plist-get org-epub-metadata :title)
+               ;### here TODO
 	       (org-epub-generate-toc-single org-epub-headlines "body.html")))
 	     (save-buffer 0)
 	     (kill-buffer))
@@ -436,7 +439,7 @@ holding export options."
 	     (insert (org-epub-template-content-opf
 		      org-epub-metadata
 		      (org-epub-gen-manifest org-epub-manifest)
-		      (org-epub-gen-spine '(("body-html" . "body.html")))))
+		      (org-epub-gen-spine chapters) ))
 	     (save-buffer 0)
 	     (kill-buffer))
 	   (org-epub-zip-it-up outfile org-epub-manifest org-epub-zip-dir)
@@ -444,8 +447,11 @@ holding export options."
 	   (message (with-output-to-string (print org-epub-manifest)))
 	   (message "Generated %s" outfile)
 	   (expand-file-name outfile))
-       (error (delete-directory org-epub-zip-dir t)
-	      (message "ox-epub eport error: %s" err)))))
+       ;(error (delete-directory org-epub-zip-dir t)
+              ;(signal (car err) (cdr err))
+	      ;(message "ox-epub export error: %s" err))
+       ;)
+     ))
 
 ;;compare org-export-options-alist
 ;;;###autoload
@@ -457,17 +463,61 @@ SUBTREEP supports narrowing of the document, VISIBLE-ONLY allows
 you to export only visible parts of the document, EXT-PLIST is
 the property list for the export process."
   (interactive)
-  (let* ((outfile (org-export-output-file-name ".epub" subtreep)))
-    (message "Output to:")
-    (message outfile)
+  (let* ((outfile (org-export-output-file-name ".epub" subtreep))
+        (org-epub-zip-dir (file-name-as-directory
+          (make-temp-file (format "%s-" "epub") t)))
+          (content (org-export-as 'epub subtreep visible-only nil ext-plist))
+        )
+
+    (message "Output to: %s" outfile)
+
     (if async
+        (progn
+
+	   (with-current-buffer (find-file (concat org-epub-zip-dir "body.html"))
+	     (erase-buffer)
+	     (insert content)
+	     (save-buffer 0)
+	     (kill-buffer))
 	(org-export-async-start (lambda (f) (org-export-add-to-stack f 'odt))
+
 	  (org-epub--export-wrapper
 	   outfile
-	   (org-export-as 'epub subtreep visible-only nil ext-plist)))
+	   (list (cons "body-html"  "body.html")
+            ))))
+
+      (progn
+
+	   (with-current-buffer (find-file (concat org-epub-zip-dir "body.html"))
+	     (erase-buffer)
+	     (insert content)
+	     (save-buffer 0)
+	     (kill-buffer))
+        (message "calling org-epub--export-wrapper")
       (org-epub--export-wrapper
        outfile
-       (org-export-as 'epub subtreep visible-only nil ext-plist)))))
+       (list (cons "body-html" "body.html"))))
+      )))
+
+
+(defun org-epub-export-with-chapters (&optional async subtreep visible-only ext-plist)
+  "Export each top-level heading as a separate XHTML and package into one EPUB."
+  (interactive)
+  (let ((chapters nil)
+        (outfile (org-export-output-file-name ".epub" subtreep))
+        (org-epub-zip-dir (file-name-as-directory
+          (make-temp-file (format "%s-" "epub") t))))
+    (org-map-entries
+     (lambda ()
+       (let* ((title (org-element-property :raw-value (org-element-at-point)))
+              (file (format "%s.xhtml" (org-export-file-name-sanitize title))))
+         (push (cons (org-export-file-name-sanitize title)  file) chapters)
+         (org-export-to-file 'html file
+           nil t visible-only nil
+           (plist-put ext-plist :output-file file)))))
+    ;; here you’d call your packaging wrapper:
+    (org-epub--export-wrapper outfile (mapcar #'identity (nreverse chapters)))))
+
 
 (defun org-epub-template-toc-ncx (uid toc-depth title toc-nav)
   "Create the toc.ncx file.
