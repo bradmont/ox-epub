@@ -1,6 +1,6 @@
 ;;;wit-hh ox-epub.el --- Export org mode projects to EPUB -*- lexical-binding: t; -*-
 
-;; Copyright (c) 2017-2018 - Mark Meyer
+;; Copyright (c) 2017-2018 - Mark Meyer ; 2025 - Brad Stewart 
 
 ;; Author: Mark Meyer <mark@ofosos.org>
 ;; Maintainer: Mark Meyer <mark@ofosos.org>
@@ -11,7 +11,7 @@
 ;; Package-Version: 20181101.1854
 ;; Package-Revision: a66eeb00daa0
 
-;; Package-Requires: ((emacs "24.3") (org "9"))
+;; Package-Requires: ((emacs "24.4") (org "9"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -466,37 +466,22 @@ the property list for the export process."
   (let* ((outfile (org-export-output-file-name ".epub" subtreep))
         (org-epub-zip-dir (file-name-as-directory
           (make-temp-file (format "%s-" "epub") t)))
-          (content (org-export-as 'epub subtreep visible-only nil ext-plist))
         )
 
     (message "Output to: %s" outfile)
-
     (if async
-        (progn
-
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "body.html"))
-	     (erase-buffer)
-	     (insert content)
-	     (save-buffer 0)
-	     (kill-buffer))
 	(org-export-async-start (lambda (f) (org-export-add-to-stack f 'odt))
-
-	  (org-epub--export-wrapper
-	   outfile
-	   (list (cons "body-html"  "body.html")
-            ))))
-
+          (progn
+            (org-export-to-file 'epub (concat org-epub-zip-dir "body.html") async subtreep visible-only nil ext-plist)
+	    (org-epub--export-wrapper
+	     outfile
+	     (list (cons "body-html"  "body.html")
+              ))))
       (progn
-
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "body.html"))
-	     (erase-buffer)
-	     (insert content)
-	     (save-buffer 0)
-	     (kill-buffer))
-        (message "calling org-epub--export-wrapper")
-      (org-epub--export-wrapper
-       outfile
-       (list (cons "body-html" "body.html"))))
+        (org-export-to-file 'epub (concat org-epub-zip-dir "body.html") async subtreep visible-only nil ext-plist)
+        (org-epub--export-wrapper
+         outfile
+         (list (cons "body-html" "body.html"))))
       )))
 
 
