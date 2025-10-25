@@ -65,7 +65,12 @@
   :menu-entry
   '(?E "Export to Epub"
        ((?e "As Epub file" org-epub-export-to-epub)
-	(?O "As Epub file and open"
+       ((?c "As Epub file with chapters" org-epub-export-with-chapters)
+	(?C "As Epub file with chapters & open"
+	    (lambda (a s v b)
+	      (if a (org-epub-export-with-chapters t s v)
+		(org-open-file (org-epub-export-with-chapters nil s v) 'system)))))
+        (?O "As Epub file and open"
 	    (lambda (a s v b)
 	      (if a (org-epub-export-to-epub t s v)
 		(org-open-file (org-epub-export-to-epub nil s v) 'system)))))))
@@ -160,6 +165,9 @@
 
 (defvar org-epub-style-counter 0
   "EPUB style counter")
+
+(defvar org-epub-toc-play-order 1
+  "Global playOrder counter for EPUB TOC navPoints.")
 
 ;; manifest mechanism
 
@@ -371,6 +379,7 @@ holding export options."
 
 (defun org-epub--export-wrapper (outfile chapters)
   "Export an Epub with CHAPTERS (list of (title . content)) generating the main html file and OUTFILE as target file."
+  (setq org-epub-manifest nil)
   (let* (
 	      ;(org-epub-manifest nil)
 	      ;(org-epub-metadata nil)
@@ -430,8 +439,9 @@ holding export options."
 	       (plist-get org-epub-metadata :epub-uid)
 	       (plist-get org-epub-metadata :epub-toc-depth)
 	       (plist-get org-epub-metadata :title)
-               ;### here TODO
-	       (org-epub-generate-toc-single org-epub-headlines "body.html")))
+               ; ### here TODO
+               ; (org-epub-generate-toc-single org-epub-headlines "body.html")))
+               (org-epub-generate-toc-nested chapters 2)))  ;; max-level = 2
 	     (save-buffer 0)
 	     (kill-buffer))
 	   (with-current-buffer (find-file (concat org-epub-zip-dir "content.opf"))
@@ -465,43 +475,65 @@ the property list for the export process."
   (interactive)
   (let* ((outfile (org-export-output-file-name ".epub" subtreep))
         (org-epub-zip-dir (file-name-as-directory
-          (make-temp-file (format "%s-" "epub") t)))
-        )
-
+          (make-temp-file (format "%s-" "epub") t))))
     (message "Output to: %s" outfile)
     (if async
-	(org-export-async-start (lambda (f) (org-export-add-to-stack f 'odt))
-          (progn
-            (org-export-to-file 'epub (concat org-epub-zip-dir "body.html") async subtreep visible-only nil ext-plist)
-	    (org-epub--export-wrapper
-	     outfile
-	     (list (cons "body-html"  "body.html")
-              ))))
+      (org-export-async-start (lambda (f) (org-export-add-to-stack f 'odt))
+        (progn
+          (org-export-to-file 'epub (concat org-epub-zip-dir "body.html") async subtreep visible-only nil ext-plist)
+	  (org-epub--export-wrapper outfile (list (cons "body-html"  "body.html")
+      ))))
       (progn
         (org-export-to-file 'epub (concat org-epub-zip-dir "body.html") async subtreep visible-only nil ext-plist)
-        (org-epub--export-wrapper
-         outfile
-         (list (cons "body-html" "body.html"))))
-      )))
+        (org-epub--export-wrapper outfile (list (cons "body-html" "body.html"))))
+      )
+    outfile))
 
 
 (defun org-epub-export-with-chapters (&optional async subtreep visible-only ext-plist)
-  "Export each top-level heading as a separate XHTML and package into one EPUB."
+  "Export the current buffer to an EPUB file, splitting top-level headings as chapters.
+
+ASYNC defines whether this process should run in the background.
+SUBTREEP supports narrowing of the document, VISIBLE-ONLY allows
+you to export only visible parts of the document, EXT-PLIST is
+the property list for the export process."
   (interactive)
-  (let ((chapters nil)
-        (outfile (org-export-output-file-name ".epub" subtreep))
-        (org-epub-zip-dir (file-name-as-directory
-          (make-temp-file (format "%s-" "epub") t))))
-    (org-map-entries
-     (lambda ()
-       (let* ((title (org-element-property :raw-value (org-element-at-point)))
-              (file (format "%s.xhtml" (org-export-file-name-sanitize title))))
-         (push (cons (org-export-file-name-sanitize title)  file) chapters)
-         (org-export-to-file 'html file
-           nil t visible-only nil
-           (plist-put ext-plist :output-file file)))))
-    ;; here you’d call your packaging wrapper:
-    (org-epub--export-wrapper outfile (mapcar #'identity (nreverse chapters)))))
+  (let* ((outfile (org-export-output-file-name ".epub" subtreep))
+         (org-epub-zip-dir (file-name-as-directory
+                            (make-temp-file "epub-" t)))
+         exported-files)
+
+    (message "Output to: %s" outfile)
+
+    ;; Collect level-1 headings as chapters
+    (setq exported-files
+          (org-map-entries
+           (lambda ()
+             (let* ((title (org-get-heading t t t t))
+                    (pos (point))
+                    (filename (format "chapter-%s.html"
+                                      (org-link-escape title))))
+               ;; Export this subtree to its own HTML file
+               (org-with-point-at pos
+                 (org-export-to-file 'html
+                   (concat org-epub-zip-dir filename)
+                   subtreep t visible-only nil ext-plist))
+               ;; Return title/filename pair
+               (cons title filename)))
+           "LEVEL=1-NOT-ARCHIVE-NOT-COMMENT"
+           'file))
+
+    ;; Fallback to single-file export if no chapters found
+    (unless exported-files
+      (let ((body-file (concat org-epub-zip-dir "body.html")))
+        (org-export-to-file 'html body-file
+          subtreep visible-only nil ext-plist)
+        (setq exported-files (list (cons "body-html" "body.html")))))
+
+    ;; Call the EPUB wrapper with the chapters
+    (org-epub--export-wrapper outfile exported-files)
+
+    outfile))
 
 
 (defun org-epub-template-toc-ncx (uid toc-depth title toc-nav)
@@ -716,6 +748,61 @@ information. The name of the target file is given by FILENAME."
       (while (> current-level 0)
 	(princ "</navPoint>")
 	(cl-decf current-level)))))
+
+(defun org-epub-generate-toc-nested (chapters max-level)
+  "Generate TOC entries for CHAPTERS with nested headings up to MAX-LEVEL.
+CHAPTERS is a list of (TITLE . FILENAME) for top-level headings."
+    (setq org-epub-toc-play-order 0)
+    (mapconcat
+     (lambda (ch)
+       (let ((chapter-id (org-link-escape (car ch)))
+             (chapter-title (car ch))
+             (chapter-file (cdr ch)))
+         ;; Start the top-level navPoint
+         (concat
+          (format "<navPoint id=\"%s\" playOrder=\"%d\">
+  <navLabel><text>%s</text></navLabel>
+  <content src=\"%s\"/>"
+                  chapter-id
+                  (cl-incf org-epub-toc-play-order)
+                  chapter-title
+                  chapter-file)
+          ;; Optionally add nested subheadings
+          (org-epub--generate-subheadings chapter-file chapter-id max-level )
+          "</navPoint>")))
+     chapters
+     "\n"))
+
+(defun org-epub--generate-subheadings (html-file parent-id max-level )
+  "Scan HTML-FILE for headings up to MAX-LEVEL and return nested navPoints.
+Uses the actual heading IDs in the HTML instead of generating new ones.
+PARENT-ID is still used as a prefix if needed."
+  (when (and html-file max-level)
+    (with-temp-buffer
+      (insert-file-contents html-file)
+      (let ((result ""))
+        (dotimes (lvl (- max-level 1))  ;; skip the chapter level (h1)
+          (goto-char (point-min))
+          (let ((heading-level (+ lvl 2))) ;; h2, h3...
+            (while (re-search-forward
+                    (format "<h%d[^>]+id=\"\\([^\"]+\\)\"[^>]*>\\(.*?\\)</h%d>"
+                            heading-level heading-level heading-level)
+                    nil t)
+              (let ((sub-id (match-string 1))
+                    (sub-title (match-string 2)))
+                (setq result
+                      (concat result
+                              (format "\n<navPoint id=\"%s\" playOrder=\"%d\">
+  <navLabel><text>%s</text></navLabel>
+  <content src=\"%s#%s\"/>
+</navPoint>"
+                                      sub-id
+                                      (cl-incf org-epub-toc-play-order)
+                                      sub-title
+                                      html-file
+                                      sub-id)))))))
+        result))))
+
 
 (provide 'ox-epub)
 
