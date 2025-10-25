@@ -63,17 +63,19 @@
     (latex-environment . org-epub--latex-environment)
     (latex-fragment . org-epub--latex-fragment))
   :menu-entry
-  '(?E "Export to Epub"
-       ((?e "As Epub file" org-epub-export-to-epub)
-       ((?c "As Epub file with chapters" org-epub-export-with-chapters)
-	(?C "As Epub file with chapters & open"
-	    (lambda (a s v b)
-	      (if a (org-epub-export-with-chapters t s v)
-		(org-open-file (org-epub-export-with-chapters nil s v) 'system)))))
-        (?O "As Epub file and open"
-	    (lambda (a s v b)
-	      (if a (org-epub-export-to-epub t s v)
-		(org-open-file (org-epub-export-to-epub nil s v) 'system)))))))
+'(?E "Export to Epub"
+     ((?c "As Epub file with chapters" org-epub-export-with-chapters)
+      (?C "As Epub file with chapters & open"
+          (lambda (a s v b)
+            (if a (org-epub-export-with-chapters t s v)
+              (org-open-file (org-epub-export-with-chapters nil s v) 'system))))
+      (?e "As Epub file" org-epub-export-to-epub)
+      (?O "As Epub file and open"
+          (lambda (a s v b)
+            (if a (org-epub-export-to-epub t s v)
+              (org-open-file (org-epub-export-to-epub nil s v) 'system))))))
+
+  )
 
 (defvar org-epub-zip-dir nil
   "The temporary directory to export to")
