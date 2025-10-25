@@ -1,17 +1,27 @@
-[[https://travis-ci.org/ofosos/ox-epub.svg?branch=master]]
-[[http://stable.melpa.org/packages/ox-epub-badge.svg]]
 
 
 * ox-epub
+
+This is a fork of the [[https://github.com/ofosos/ox-epub][ox-epub package by
+Mark Meyer.]] It has been modified to allow exporting epubs split into multiple
+chapters uding the function org-epub-export-with-chapters. This splits top-level
+headings in your org file separate html files, which are chapters within the
+epub.
 
 Generate =.epub= files directly from OrgMode. This will export EPUB
 version 2, which should give broad compatibility. It should also be
 relatiely easy to convert the resulting =.epub= to a =.mobi= (Kindle).
 
+
+*THIS IS A WORK IN PROGRESS* and has probably introduced bugs not present in trunk
+ox-epub. It required refactoring some of the package's internal workings. Bug
+reports and PRs are welcome, though this is not my day job so I probably won't
+be quick to respond.
+
 ** Prerequisites
 
-This depends on Emacs 24.3 and OrgMode 9, it won't work on OrgMode 8 or
-any version of Emacs before 24.3.
+This depends on Emacs 24.4 and OrgMode 9, it won't work on OrgMode 8 or
+any version of Emacs before 24.4.
 
 You will also need a working version of the =zip= utility.
 
@@ -72,7 +82,4 @@ Currently =ox-epub= can do the following:
 
 ** Coffee
 
-I very much like coffee, so if you want to contribute to my coffee fund,
-you can now do that :)
-
-[[https://www.buymeacoffee.com/markZb][https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png]]
+I can't stand coffee. But feel free to give coffee money to Mark from his github.
