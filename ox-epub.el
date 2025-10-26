@@ -268,18 +268,6 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
      (t latex-frag))))
 
 
-(defun org-epub-link (link desc info)
-  "Return the HTML required for a link descriped by LINK, DESC, and INFO.
-
-See org-html-link for more info."
-  (when (org-export-inline-image-p link (plist-get info :html-inline-image-rules))
-    (let* ((path (org-link-unescape (org-element-property :path link)))
-	   (ref (org-export-get-reference link info))
-	   (mime (file-name-extension path))
-	   (name (concat "img-" ref "." mime)))
-      (push (org-epub-manifest-entry ref name 'img (concat "image/" mime) path) org-epub-manifest)
-      (org-element-put-property link :path name)))
-  (org-html-link link desc info))
 
 (defun org-epub-meta-put (symbols info)
   "Put SYMBOLS taken from INFO into the org-epub metadata cache."
@@ -292,6 +280,34 @@ See org-html-link for more info."
 			      (org-export-data data info)
 			    data)))))
    symbols))
+
+(defun org-epub-link (link desc info)
+  "Return the HTML required for a link descriped by LINK, DESC, and INFO.
+   Add manifest entries for inline images (file: or attachment: links)
+   See org-html-link for more info."
+  (let ((type (org-element-property :type link))
+        (path (org-element-property :path link)))
+    (cond
+     ;; local image file
+     ((and (member type '("file" "attachment"))
+           (org-export-inline-image-p link ))
+      (let* ((src (expand-file-name path))
+             (target (concat "images/" (file-name-nondirectory src)))
+             (dest (expand-file-name target org-epub-zip-dir)))
+        (message "lets")
+        (unless (file-exists-p (file-name-directory dest))
+          (make-directory (file-name-directory dest) t))
+        (copy-file src dest t)
+        (message "copied")
+      (push (org-epub-manifest-entry (org-export-get-reference link info) (concat "images/" (file-name-nondirectory src)) 'img (concat "image/" (file-name-extension path)) path) org-epub-manifest)
+        ;(push (format "<item id=\"%s\" href=\"%s\" media-type=\"%s\"/>" (file-name-nondirectory src) target (concat "image/" (file-name-extension path))) org-epub-manifest)
+        (message "org-epub-link set org-epub-manifest to %S" org-epub-manifest)
+        (format "<img src=\"%s\" alt=\"%s\"/>"
+                target (or desc ""))))
+     ;; external link (http etc)
+     (t
+      (org-html-link link desc info)))))
+
 
 (defun org-epub-template (contents info)
   "Return complete document string after HTML conversion.
@@ -381,14 +397,13 @@ holding export options."
 
 (defun org-epub--export-wrapper (outfile chapters)
   "Export an Epub with CHAPTERS (list of (title . content)) generating the main html file and OUTFILE as target file."
-  (setq org-epub-manifest nil)
   (let* (
 	      ;(org-epub-manifest nil)
 	      ;(org-epub-metadata nil)
 	      (org-epub-style-counter 0)
 	      (out-file-type (file-name-extension outfile))
 	      )
-     ;(condition-case err
+     (condition-case err
 	 (progn
 	   (when (plist-get org-epub-metadata :html-head-include-default-style)
 	     (with-current-buffer (find-file (concat org-epub-zip-dir "style.css"))
@@ -456,13 +471,12 @@ holding export options."
 	     (kill-buffer))
 	   (org-epub-zip-it-up outfile org-epub-manifest org-epub-zip-dir)
 	   (delete-directory org-epub-zip-dir t)
-	   (message (with-output-to-string (print org-epub-manifest)))
 	   (message "Generated %s" outfile)
 	   (expand-file-name outfile))
-       ;(error (delete-directory org-epub-zip-dir t)
-              ;(signal (car err) (cdr err))
-	      ;(message "ox-epub export error: %s" err))
-       ;)
+       (error (delete-directory org-epub-zip-dir t)
+              (signal (car err) (cdr err))
+	      (message "ox-epub export error: %s" err))
+       )
      ))
 
 ;;compare org-export-options-alist
@@ -475,6 +489,8 @@ SUBTREEP supports narrowing of the document, VISIBLE-ONLY allows
 you to export only visible parts of the document, EXT-PLIST is
 the property list for the export process."
   (interactive)
+
+  (setq org-epub-manifest nil)
   (let* ((outfile (org-export-output-file-name ".epub" subtreep))
         (org-epub-zip-dir (file-name-as-directory
           (make-temp-file (format "%s-" "epub") t))))
@@ -500,6 +516,8 @@ SUBTREEP supports narrowing of the document, VISIBLE-ONLY allows
 you to export only visible parts of the document, EXT-PLIST is
 the property list for the export process."
   (interactive)
+
+  (setq org-epub-manifest nil)
   (let* ((outfile (org-export-output-file-name ".epub" subtreep))
          (org-epub-zip-dir (file-name-as-directory
                             (make-temp-file "epub-" t)))
@@ -517,9 +535,7 @@ the property list for the export process."
                                       (org-link-escape title))))
                ;; Export this subtree to its own HTML file
                (org-with-point-at pos
-                 (org-export-to-file 'html
-                   (concat org-epub-zip-dir filename)
-                   subtreep t visible-only nil ext-plist))
+                 (org-export-to-file 'epub (concat org-epub-zip-dir filename) subtreep t visible-only nil ext-plist))
                ;; Return title/filename pair
                (cons title filename)))
            "LEVEL=1-NOT-ARCHIVE-NOT-COMMENT"
@@ -528,8 +544,7 @@ the property list for the export process."
     ;; Fallback to single-file export if no chapters found
     (unless exported-files
       (let ((body-file (concat org-epub-zip-dir "body.html")))
-        (org-export-to-file 'html body-file
-          subtreep visible-only nil ext-plist)
+        (org-export-to-file 'epub body-file subtreep visible-only nil ext-plist)
         (setq exported-files (list (cons "body-html" "body.html")))))
 
     ;; Call the EPUB wrapper with the chapters
