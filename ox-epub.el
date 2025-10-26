@@ -425,47 +425,51 @@ holding export options."
 		   (push men org-epub-manifest))
 		 (let ((men (org-epub-manifest-entry "cover-image" cover-name 'coverimg (concat "image/" cover-type) cover-path)))
 		   (push men org-epub-manifest)))))
-           (unless (file-directory-p (expand-file-name "META-INF" org-epub-zip-dir))
-             (make-directory (file-name-as-directory (expand-file-name "META-INF" org-epub-zip-dir))))
-	   (with-current-buffer (find-file (expand-file-name "META-INF/container.xml" org-epub-zip-dir))
-	     (erase-buffer)
-	     (insert (org-epub-template-container))
-	     (save-buffer 0)
-	     (kill-buffer))
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "mimetype"))
-	     (erase-buffer)
-	     (insert (org-epub-template-mimetype))
-	     (save-buffer 0)
-	     (kill-buffer))
-           (nconc org-epub-manifest
-             (mapcar (lambda (ch)
-               (org-epub-manifest-entry
-                 (car ch)
-                 (file-name-nondirectory (cdr ch))
-                 'html
-                 "application/xhtml+xml"))
-               chapters))
 
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "toc.ncx"))
-	     (erase-buffer)
-	     (insert
-	      (org-epub-template-toc-ncx
-	       (plist-get org-epub-metadata :epub-uid)
-	       (plist-get org-epub-metadata :epub-toc-depth)
-	       (plist-get org-epub-metadata :title)
-               ; ### here TODO
-               ; (org-epub-generate-toc-single org-epub-headlines "body.html")))
-               (org-epub-generate-toc-nested chapters 2)))  ;; max-level = 2
-	     (save-buffer 0)
-	     (kill-buffer))
-	   (with-current-buffer (find-file (concat org-epub-zip-dir "content.opf"))
-	     (erase-buffer)
-	     (insert (org-epub-template-content-opf
-		      org-epub-metadata
-		      (org-epub-gen-manifest org-epub-manifest)
-		      (org-epub-gen-spine chapters) ))
-	     (save-buffer 0)
-	     (kill-buffer))
+
+
+           ;;; converted with-this-buffer to temp files.
+           ;;; TODO: do the same for style.css and cover.html above
+           
+          (let ((chapters_absolute (org-epub-chapter-paths chapters org-epub-zip-dir)))
+            ;; META-INF/container.xml
+            (let ((container-file (expand-file-name "META-INF/container.xml" org-epub-zip-dir)))
+              (unless (file-directory-p (file-name-directory container-file))
+                (make-directory (file-name-directory container-file) t))
+              (with-temp-file container-file
+                (insert (org-epub-template-container))))
+            
+            ;; mimetype
+            (with-temp-file (expand-file-name "mimetype" org-epub-zip-dir)
+              (insert (org-epub-template-mimetype)))
+            
+                       (nconc org-epub-manifest
+                         (mapcar (lambda (ch)
+                           (org-epub-manifest-entry
+                             (car ch)
+                             (file-name-nondirectory (cdr ch))
+                             'html
+                             "application/xhtml+xml"))
+                           chapters))
+            
+            ; toc.ncx
+            (let ((toc-file (expand-file-name "toc.ncx" org-epub-zip-dir)))
+              (with-temp-file toc-file
+                (insert
+                 (org-epub-template-toc-ncx
+                  (plist-get org-epub-metadata :epub-uid)
+                  (plist-get org-epub-metadata :epub-toc-depth)
+                  (plist-get org-epub-metadata :title)
+                  (org-epub-generate-toc-nested chapters_absolute 2))))) ;; max-level = 2
+            ;; content.opf
+            (with-temp-file (expand-file-name "content.opf" org-epub-zip-dir)
+              (insert (org-epub-template-content-opf
+                       org-epub-metadata
+                       (org-epub-gen-manifest org-epub-manifest)
+                       (org-epub-gen-spine chapters))))
+          ) ; let chapters_absolute
+
+
 	   (org-epub-zip-it-up outfile org-epub-manifest org-epub-zip-dir)
 	   (delete-directory org-epub-zip-dir t)
 	   (message "Generated %s" outfile)
@@ -475,6 +479,15 @@ holding export options."
 	      (message "ox-epub export error: %s" err))
        )
      ))
+
+(defun org-epub-chapter-paths (chapters temp-dir)
+  "Return a list of chapters with absolute paths.
+CHAPTERS is a list of (TITLE . FILENAME).
+TEMP-DIR is the directory where the HTML files live."
+  (mapcar (lambda (ch)
+            (cons (car ch)
+                  (expand-file-name (cdr ch) temp-dir)))
+          chapters))
 
 ;;compare org-export-options-alist
 ;;;###autoload
