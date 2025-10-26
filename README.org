@@ -23,6 +23,7 @@ be quick to respond.
 - [ ] html TOCs are being generated in each exported chapter; get rid of them
 - [ ] should probably migrate to a more modern version of epub
 - [ ] Lots of features are untested on this branch. There are almost certainly regressions.
+- [ ] Should probably eliminate the old org-export-to-epub function and make sure configuring chapter level 0 makes an equivalent whole-file export.
 
 ** Prerequisites
 
