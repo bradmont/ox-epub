@@ -545,7 +545,7 @@ the property list for the export process."
                                       (org-link-escape title))))
                ;; Export this subtree to its own HTML file
                (org-with-point-at pos
-                 (org-export-to-file 'epub (concat org-epub-zip-dir filename) subtreep t visible-only nil ext-plist))
+                 (org-export-to-file 'epub (concat org-epub-zip-dir filename) subtreep t visible-only nil (plist-put ext-plist :with-toc nil)))
                ;; Return title/filename pair
                (cons title filename)))
            "LEVEL=1-NOT-ARCHIVE-NOT-COMMENT"
@@ -554,7 +554,8 @@ the property list for the export process."
     ;; Fallback to single-file export if no chapters found
     (unless exported-files
       (let ((body-file (concat org-epub-zip-dir "body.html")))
-        (org-export-to-file 'epub body-file subtreep visible-only nil ext-plist)
+        (org-export-to-file 'epub body-file subtreep visible-only nil (plist-put ext-plist :with-toc nil))
+
         (setq exported-files (list (cons "body-html" "body.html")))))
 
     ;; Call the EPUB wrapper with the chapters
