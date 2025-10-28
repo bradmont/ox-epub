@@ -1,4 +1,4 @@
-;;;wit-hh ox-epub.el --- Export org mode projects to EPUB -*- lexical-binding: t; -*-
+;;; ox-epub.el --- Export org mode projects to EPUB -*- lexical-binding: t; -*-
 
 ;; Copyright (c) 2017-2018 - Mark Meyer ; 2025 - Brad Stewart 
 
@@ -793,7 +793,7 @@ CHAPTERS is a list of (TITLE . FILENAME) for top-level headings."
                   chapter-id
                   (cl-incf org-epub-toc-play-order)
                   chapter-title
-                  chapter-file)
+                  (file-name-nondirectory chapter-file))
           ;; Optionally add nested subheadings
           (org-epub--generate-subheadings chapter-file chapter-id max-level )
           "</navPoint>")))
@@ -826,7 +826,7 @@ PARENT-ID is still used as a prefix if needed."
                                       sub-id
                                       (cl-incf org-epub-toc-play-order)
                                       sub-title
-                                      html-file
+                                      (file-name-nondirectory html-file)
                                       sub-id)))))))
         result))))
 
