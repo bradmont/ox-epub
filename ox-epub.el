@@ -2,10 +2,10 @@
 
 ;; Copyright (c) 2017-2018 - Mark Meyer ; 2025 - Brad Stewart 
 
-;; Author: Mark Meyer <mark@ofosos.org>
-;; Maintainer: Mark Meyer <mark@ofosos.org>
+;; Original Author: Mark Meyer <mark@ofosos.org>
+;; Maintainer: Brad Stewart
 
-;; URL: http://github.com/ofosos/org-epub
+;; URL: http://github.com/bradmont/org-epub
 ;; Keywords: hypermedia
 
 ;; Package-Version: 20181101.1854
@@ -310,10 +310,11 @@ CONTENTS is nil.  INFO is a plist holding contextual information."
   "Return complete document string after HTML conversion.
 CONTENTS is the transcoded contents string.  INFO is a plist
 holding export options."
+  ; TODO : this seems to be done for each chapter/html file.
   (org-epub-meta-put '(:epub-uid :title :language :epub-subject :epub-description :author
 				 :epub-publisher :date :epub-rights :html-head-include-default-style :epub-cover :epub-style) info)
   (setq org-epub-metadata (plist-put org-epub-metadata :epub-toc-depth 2))
-  ;; maybe set toc-depth "2" to some dynamic value
+  ;; TODO maybe set toc-depth "2" to some dynamic value
   (setq org-epub-headlines
 	(mapcar (lambda (headline)
 		  (list
@@ -453,6 +454,9 @@ holding export options."
                            chapters))
             
             ; toc.ncx
+            ; TODO: Set document metada here so it isn't recycled from the last chapter
+            ; (org-epub-meta-put '(:epub-uid :title :language :epub-subject :epub-description :author
+	    ;		 :epub-publisher :date :epub-rights :html-head-include-default-style :epub-cover :epub-style) info)
             (let ((toc-file (expand-file-name "toc.ncx" org-epub-zip-dir)))
               (with-temp-file toc-file
                 (insert
@@ -535,6 +539,15 @@ the property list for the export process."
 
     (message "Output to: %s" outfile)
 
+    (message (prin1-to-string ext-plist))
+  (let ((first-pos (save-excursion (goto-char (point-min))
+                                 (- (re-search-forward "^\\* " nil t) 3)))
+
+      (ext-plist (plist-put (plist-put (plist-put ext-plist :with-toc nil ) :with-author nil) :subtitle nil))
+      (org-html-preamble nil)
+      (org-export-timestamp-file nil)
+      (org-export-with-subtitle nil)
+      )
     ;; Collect level-1 headings as chapters
     (setq exported-files
           (org-map-entries
@@ -545,16 +558,26 @@ the property list for the export process."
                                       (org-link-escape title))))
                ;; Export this subtree to its own HTML file
                (org-with-point-at pos
-                 (org-export-to-file 'epub (concat org-epub-zip-dir filename) subtreep t visible-only nil (plist-put ext-plist :with-toc nil)))
+                 (org-export-to-file 'epub (concat org-epub-zip-dir filename) subtreep t visible-only nil ext-plist))
                ;; Return title/filename pair
                (cons title filename)))
            "LEVEL=1-NOT-ARCHIVE-NOT-COMMENT"
            'file))
 
+
+    (when first-pos
+      (save-restriction
+        (narrow-to-region (point-min) first-pos)
+        (message "narrow-to-region %d %d" (point-min) (match-beginning 0))
+        (let ((preamble-file (concat org-epub-zip-dir "chapter-preamble.html")))
+          (org-export-to-file 'epub preamble-file nil nil visible-only nil
+                              ext-plist)
+          (push (cons "Preamble" "chapter-preamble.html") exported-files)))))
+
     ;; Fallback to single-file export if no chapters found
     (unless exported-files
       (let ((body-file (concat org-epub-zip-dir "body.html")))
-        (org-export-to-file 'epub body-file subtreep visible-only nil (plist-put ext-plist :with-toc nil))
+        (org-export-to-file 'epub body-file subtreep visible-only nil (plist-put ext-plist :with-toc nil)  )
 
         (setq exported-files (list (cons "body-html" "body.html")))))
 
